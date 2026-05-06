@@ -21,9 +21,7 @@ with browser-native rendering sits in.
 - **binary.html**: This is the binary star with a wider companion 
 
 ## Quick Start 
-- What you can do is either download the files and go live with earth_moon.html or solar.html. 
-OR 
-- Click on the links below for earth_moon.html run and solar.html run. 
+- What you can do is either download the files and go live with earth_moon.html or solar.html or click on the links below for earth_moon.html run and solar.html run. 
 
 ## Links: 
 
