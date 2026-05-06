@@ -1,0 +1,832 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>__TITLE__</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg-deep:    #07090f;
+    --bg:         #0a0d14;
+    --bg-soft:    #0f1420;
+    --line:       #1a2030;
+    --line-soft:  #131826;
+    --brass:      #c89968;
+    --brass-hi:   #e8b87c;
+    --brass-dim:  #8a6d4a;
+    --ink:        #e8e3d8;
+    --ink-soft:   #b6b1a4;
+    --ink-mute:   #6e6a5e;
+    --shadow-glow: 0 0 40px rgba(200,153,104,0.08);
+  }
+
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: var(--bg-deep);
+    color: var(--ink);
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ====================================================================
+     Background atmosphere — subtle radial gradient + faint vignette
+     ==================================================================== */
+  body::before {
+    content: "";
+    position: fixed; inset: 0;
+    background:
+      radial-gradient(ellipse at 30% 20%, rgba(200,153,104,0.04) 0%, transparent 50%),
+      radial-gradient(ellipse at 80% 90%, rgba(91,141,239,0.03) 0%, transparent 60%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  canvas { display: block; position: fixed; inset: 0; z-index: 1; cursor: grab; }
+  canvas.dragging { cursor: grabbing; }
+
+  /* ====================================================================
+     Floating panels — paper-thin overlays with backdrop blur
+     ==================================================================== */
+  .panel {
+    position: fixed;
+    background: rgba(10, 13, 20, 0.72);
+    backdrop-filter: blur(14px) saturate(140%);
+    -webkit-backdrop-filter: blur(14px) saturate(140%);
+    border: 1px solid var(--line);
+    box-shadow: var(--shadow-glow);
+    z-index: 10;
+    padding: 18px 22px;
+  }
+  .panel::before {
+    /* Brass corner ticks */
+    content: "";
+    position: absolute;
+    top: -1px; left: -1px;
+    width: 10px; height: 10px;
+    border-top: 1px solid var(--brass);
+    border-left: 1px solid var(--brass);
+    pointer-events: none;
+  }
+  .panel::after {
+    content: "";
+    position: absolute;
+    bottom: -1px; right: -1px;
+    width: 10px; height: 10px;
+    border-bottom: 1px solid var(--brass);
+    border-right: 1px solid var(--brass);
+    pointer-events: none;
+  }
+
+  /* Title + Legend share a left column */
+  #panel-title {
+    top: 28px; left: 28px;
+    max-width: 360px;
+    width: 320px;
+  }
+  #panel-legend {
+    left: 28px; right: auto;
+    /* top is set by JS after title height is known */
+    width: 320px;
+  }
+  #panel-title .eyebrow {
+    font-size: 10px;
+    letter-spacing: 0.3em;
+    color: var(--brass);
+    text-transform: uppercase;
+    margin-bottom: 8px;
+    font-weight: 400;
+  }
+  #panel-title h1 {
+    font-family: 'Cormorant Garamond', serif;
+    font-weight: 500;
+    font-style: italic;
+    font-size: 32px;
+    line-height: 1.05;
+    margin: 0 0 14px 0;
+    color: var(--ink);
+    letter-spacing: 0.01em;
+  }
+  #panel-title .meta {
+    font-size: 10px;
+    color: var(--ink-mute);
+    letter-spacing: 0.15em;
+    border-top: 1px solid var(--line);
+    padding-top: 10px;
+    margin-top: 4px;
+    text-transform: uppercase;
+  }
+
+  /* Legend (bodies) — below title */
+  #panel-legend {
+    top: 28px; left: 28px;
+    margin-top: 0;
+    /* positioned dynamically? we'll just use a separate panel below */
+  }
+  .legend-list { list-style: none; margin: 0; padding: 0; }
+  .legend-list li {
+    display: flex; align-items: center;
+    padding: 6px 0;
+    font-size: 11px;
+    border-bottom: 1px dashed var(--line-soft);
+    letter-spacing: 0.05em;
+  }
+  .legend-list li:last-child { border-bottom: none; }
+  .legend-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    margin-right: 12px;
+    box-shadow: 0 0 8px currentColor;
+  }
+  .legend-name { flex: 1; color: var(--ink); }
+  .legend-mass { color: var(--ink-mute); font-size: 10px; }
+
+  /* Controls — top right */
+  #panel-controls {
+    top: 28px; right: 28px;
+    width: 280px;
+  }
+  #panel-controls .label {
+    font-size: 9px;
+    letter-spacing: 0.3em;
+    color: var(--brass);
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+  .btn-row {
+    display: flex; gap: 8px;
+    margin-bottom: 14px;
+  }
+  .btn {
+    flex: 1;
+    background: transparent;
+    border: 1px solid var(--line);
+    color: var(--ink-soft);
+    padding: 8px 10px;
+    font-family: inherit;
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .btn:hover { border-color: var(--brass); color: var(--brass-hi); }
+  .btn.active { border-color: var(--brass); color: var(--brass-hi); background: rgba(200,153,104,0.06); }
+
+  .speed-row {
+    display: flex; gap: 4px;
+    margin-bottom: 4px;
+  }
+  .speed-btn {
+    flex: 1;
+    background: transparent;
+    border: 1px solid var(--line);
+    color: var(--ink-mute);
+    padding: 6px 4px;
+    font-family: inherit;
+    font-size: 10px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .speed-btn:hover { color: var(--ink); }
+  .speed-btn.active { border-color: var(--brass); color: var(--brass-hi); }
+
+  /* Bottom HUD — time + scale */
+  #panel-hud {
+    bottom: 28px; left: 50%;
+    transform: translateX(-50%);
+    display: flex; gap: 0;
+    padding: 0;
+    overflow: hidden;
+  }
+  .hud-cell {
+    padding: 14px 28px;
+    border-right: 1px solid var(--line);
+    text-align: center;
+  }
+  .hud-cell:last-child { border-right: none; }
+  .hud-cell .label {
+    font-size: 9px;
+    letter-spacing: 0.3em;
+    color: var(--brass);
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .hud-cell .value {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 22px;
+    color: var(--ink);
+    font-weight: 500;
+    line-height: 1;
+  }
+  .hud-cell .unit {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--ink-mute);
+    margin-left: 4px;
+  }
+
+  /* Bottom-right hint */
+  #hint {
+    position: fixed;
+    bottom: 28px; right: 28px;
+    font-size: 9px;
+    letter-spacing: 0.2em;
+    color: var(--ink-mute);
+    text-transform: uppercase;
+    text-align: right;
+    line-height: 1.8;
+    z-index: 10;
+  }
+  #hint kbd {
+    border: 1px solid var(--line);
+    padding: 1px 5px;
+    border-radius: 2px;
+    color: var(--ink-soft);
+    font-family: inherit;
+    font-size: 9px;
+  }
+
+  /* Decorative brand mark — bottom left */
+  #brand {
+    position: fixed;
+    bottom: 28px; left: 28px;
+    z-index: 10;
+    font-family: 'Cormorant Garamond', serif;
+    font-style: italic;
+    color: var(--brass);
+    font-size: 14px;
+    letter-spacing: 0.05em;
+    opacity: 0.7;
+  }
+  #brand::before {
+    content: "✦";
+    margin-right: 8px;
+    font-size: 10px;
+    vertical-align: middle;
+  }
+
+  /* Page-load reveal */
+  .panel, #hint, #brand {
+    opacity: 0;
+    transform: translateY(8px);
+    animation: rise 0.9s ease forwards;
+  }
+  #panel-title    { animation-delay: 0.1s; }
+  #panel-controls { animation-delay: 0.25s; }
+  #panel-legend   { animation-delay: 0.4s; }
+  #panel-hud      { animation-delay: 0.55s; transform: translate(-50%, 8px); }
+  #panel-hud      { animation-name: rise-center; }
+  #hint           { animation-delay: 0.7s; }
+  #brand          { animation-delay: 0.7s; }
+
+  @keyframes rise {
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes rise-center {
+    to { opacity: 1; transform: translate(-50%, 0); }
+  }
+
+  /* Mobile — collapse the right panel under title */
+  @media (max-width: 720px) {
+    #panel-title    { top: 16px; left: 16px; right: 16px; max-width: none; }
+    #panel-controls { top: auto; bottom: 110px; left: 16px; right: 16px; width: auto; }
+    #panel-legend   { display: none; }
+    #panel-hud      { bottom: 16px; }
+    #hint, #brand   { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<canvas id="stage"></canvas>
+
+<div class="panel" id="panel-title">
+  <div class="eyebrow">Orbital Mechanics</div>
+  <h1 id="title-text">__TITLE__</h1>
+  <div class="meta">N-Body Simulation <span style="color:var(--brass-dim)">·</span> Runge–Kutta&nbsp;4</div>
+</div>
+
+<div class="panel" id="panel-legend">
+  <div style="font-size:9px;letter-spacing:0.3em;color:var(--brass);text-transform:uppercase;margin-bottom:10px;">Bodies</div>
+  <ul class="legend-list" id="legend"></ul>
+</div>
+
+<div class="panel" id="panel-controls">
+  <div class="label">Transport</div>
+  <div class="btn-row">
+    <button class="btn active" id="btn-play">Play</button>
+    <button class="btn" id="btn-reset">Restart</button>
+    <button class="btn" id="btn-fit">Recenter</button>
+  </div>
+  <div class="label">Time Multiplier</div>
+  <div class="speed-row">
+    <button class="speed-btn" data-speed="0.25">¼×</button>
+    <button class="speed-btn" data-speed="0.5">½×</button>
+    <button class="speed-btn active" data-speed="1">1×</button>
+    <button class="speed-btn" data-speed="2">2×</button>
+    <button class="speed-btn" data-speed="4">4×</button>
+    <button class="speed-btn" data-speed="8">8×</button>
+  </div>
+  <div class="label" style="margin-top:14px;">Display</div>
+  <div class="btn-row" style="margin-bottom:0;">
+    <button class="btn active" id="btn-trails">Trails</button>
+    <button class="btn active" id="btn-grid">Grid</button>
+    <button class="btn active" id="btn-labels">Labels</button>
+  </div>
+</div>
+
+<div class="panel" id="panel-hud">
+  <div class="hud-cell">
+    <div class="label">Elapsed</div>
+    <div class="value" id="hud-time">0<span class="unit">d</span></div>
+  </div>
+  <div class="hud-cell">
+    <div class="label">Scale</div>
+    <div class="value" id="hud-scale">—<span class="unit">km/px</span></div>
+  </div>
+  <div class="hud-cell">
+    <div class="label">Frame</div>
+    <div class="value" id="hud-frame">0<span class="unit">/0</span></div>
+  </div>
+</div>
+
+<div id="hint">
+  <kbd>drag</kbd> to pan &nbsp;·&nbsp; <kbd>wheel</kbd> to zoom <br>
+  <kbd>space</kbd> play/pause &nbsp;·&nbsp; <kbd>R</kbd> restart
+</div>
+
+<div id="brand">orbital.py</div>
+
+<script>
+// =====================================================================
+//   PAYLOAD — injected by orbital.py
+// =====================================================================
+const DATA = /*__PAYLOAD__*/null;
+
+// =====================================================================
+//   CONSTANTS & STATE
+// =====================================================================
+const canvas = document.getElementById('stage');
+const ctx = canvas.getContext('2d');
+
+const state = {
+  width: 0, height: 0, dpr: 1,
+  // World transform (world meters -> screen px)
+  scale: 1,           // px per meter
+  offsetX: 0,         // screen px
+  offsetY: 0,
+  // Animation
+  frame: 0,
+  playing: true,
+  speed: 1,
+  showTrails: true,
+  showGrid: true,
+  showLabels: true,
+  // Drag state
+  dragging: false,
+  dragX: 0, dragY: 0,
+  // Pre-computed world bounds
+  bounds: null,
+  totalFrames: 0,
+};
+
+// =====================================================================
+//   SETUP
+// =====================================================================
+function resize() {
+  state.dpr = Math.min(window.devicePixelRatio || 1, 2);
+  state.width = window.innerWidth;
+  state.height = window.innerHeight;
+  canvas.width = state.width * state.dpr;
+  canvas.height = state.height * state.dpr;
+  canvas.style.width = state.width + 'px';
+  canvas.style.height = state.height + 'px';
+  ctx.setTransform(state.dpr, 0, 0, state.dpr, 0, 0);
+}
+
+function computeBounds() {
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (const body of DATA.bodies) {
+    for (const p of body.trail) {
+      if (p[0] < minX) minX = p[0];
+      if (p[0] > maxX) maxX = p[0];
+      if (p[1] < minY) minY = p[1];
+      if (p[1] > maxY) maxY = p[1];
+    }
+  }
+  // Guard against degenerate
+  if (!isFinite(minX)) { minX = -1; maxX = 1; minY = -1; maxY = 1; }
+  state.bounds = { minX, maxX, minY, maxY };
+  state.totalFrames = Math.max(...DATA.bodies.map(b => b.trail.length));
+}
+
+function fitView() {
+  const b = state.bounds;
+  const w = b.maxX - b.minX;
+  const h = b.maxY - b.minY;
+  const cx = (b.minX + b.maxX) / 2;
+  const cy = (b.minY + b.maxY) / 2;
+  const margin = 0.15;
+  const scaleX = state.width  * (1 - 2 * margin) / Math.max(w, 1);
+  const scaleY = state.height * (1 - 2 * margin) / Math.max(h, 1);
+  state.scale = Math.min(scaleX, scaleY);
+  state.offsetX = state.width  / 2 - cx * state.scale;
+  // Note: y-axis: in physics y goes up, on screen y goes down, so we flip
+  state.offsetY = state.height / 2 + cy * state.scale;
+}
+
+function worldToScreen(x, y) {
+  return [
+    x * state.scale + state.offsetX,
+    -y * state.scale + state.offsetY,
+  ];
+}
+
+// =====================================================================
+//   RENDERING
+// =====================================================================
+function drawBackground() {
+  ctx.fillStyle = '#07090f';
+  ctx.fillRect(0, 0, state.width, state.height);
+
+  // Subtle starfield (deterministic, seeded by position so it doesn't shimmer)
+  // Stars are drawn in screen-space; we keep them in fixed positions for stability.
+  if (!drawBackground._stars) {
+    const stars = [];
+    let seed = 1;
+    const rand = () => { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; };
+    for (let i = 0; i < 220; i++) {
+      stars.push({
+        x: rand(),
+        y: rand(),
+        r: rand() * 0.9 + 0.1,
+        a: rand() * 0.5 + 0.15,
+      });
+    }
+    drawBackground._stars = stars;
+  }
+  for (const s of drawBackground._stars) {
+    ctx.fillStyle = `rgba(232, 227, 216, ${s.a})`;
+    ctx.beginPath();
+    ctx.arc(s.x * state.width, s.y * state.height, s.r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+function drawGrid() {
+  if (!state.showGrid) return;
+  // Pick a step in world units that gives ~80–160 px on screen
+  const targetPx = 120;
+  const targetWorld = targetPx / state.scale;
+  const exp = Math.floor(Math.log10(targetWorld));
+  const base = Math.pow(10, exp);
+  const candidates = [1, 2, 5, 10];
+  let step = base;
+  for (const c of candidates) {
+    if (Math.abs(c * base - targetWorld) < Math.abs(step - targetWorld)) {
+      step = c * base;
+    }
+  }
+  // Compute visible world range
+  const wx0 = (0 - state.offsetX) / state.scale;
+  const wx1 = (state.width - state.offsetX) / state.scale;
+  const wy0 = -(state.height - state.offsetY) / state.scale;
+  const wy1 = -(0 - state.offsetY) / state.scale;
+  const xStart = Math.floor(wx0 / step) * step;
+  const xEnd   = Math.ceil(wx1 / step) * step;
+  const yStart = Math.floor(wy0 / step) * step;
+  const yEnd   = Math.ceil(wy1 / step) * step;
+
+  ctx.strokeStyle = 'rgba(26, 32, 48, 0.7)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let x = xStart; x <= xEnd; x += step) {
+    const [sx, _] = worldToScreen(x, 0);
+    ctx.moveTo(sx, 0); ctx.lineTo(sx, state.height);
+  }
+  for (let y = yStart; y <= yEnd; y += step) {
+    const [_, sy] = worldToScreen(0, y);
+    ctx.moveTo(0, sy); ctx.lineTo(state.width, sy);
+  }
+  ctx.stroke();
+
+  // Stronger axes through origin
+  ctx.strokeStyle = 'rgba(138, 109, 74, 0.18)';
+  ctx.beginPath();
+  const [ox, _oy] = worldToScreen(0, 0);
+  const [_ox2, oy] = worldToScreen(0, 0);
+  ctx.moveTo(ox, 0); ctx.lineTo(ox, state.height);
+  ctx.moveTo(0, oy); ctx.lineTo(state.width, oy);
+  ctx.stroke();
+}
+
+function drawTrails() {
+  if (!state.showTrails) return;
+  for (const body of DATA.bodies) {
+    const upTo = Math.min(state.frame, body.trail.length - 1);
+    if (upTo < 1) continue;
+    // Fade from origin -> current; recent points more opaque
+    const tailLen = Math.min(upTo, 2000);
+    const start = upTo - tailLen;
+    ctx.lineWidth = 1.2;
+    ctx.strokeStyle = body.color;
+    ctx.globalAlpha = 0.85;
+    ctx.beginPath();
+    for (let i = start; i <= upTo; i++) {
+      const [sx, sy] = worldToScreen(body.trail[i][0], body.trail[i][1]);
+      if (i === start) ctx.moveTo(sx, sy);
+      else ctx.lineTo(sx, sy);
+    }
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+}
+
+function drawBodies() {
+  for (const body of DATA.bodies) {
+    const idx = Math.min(state.frame, body.trail.length - 1);
+    if (idx < 0) continue;
+    const [sx, sy] = worldToScreen(body.trail[idx][0], body.trail[idx][1]);
+
+    // Outer glow
+    const grad = ctx.createRadialGradient(sx, sy, 0, sx, sy, body.radius * 4);
+    grad.addColorStop(0, body.color + 'cc');
+    grad.addColorStop(0.4, body.color + '33');
+    grad.addColorStop(1, body.color + '00');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(sx, sy, body.radius * 4, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Body core
+    ctx.fillStyle = body.color;
+    ctx.beginPath();
+    ctx.arc(sx, sy, body.radius, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Inner highlight
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.35)';
+    ctx.beginPath();
+    ctx.arc(sx - body.radius * 0.3, sy - body.radius * 0.3, body.radius * 0.35, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Label
+    if (state.showLabels) {
+      ctx.font = "11px 'JetBrains Mono', monospace";
+      ctx.fillStyle = 'rgba(232, 227, 216, 0.85)';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      const labelOffset = body.radius + 8;
+      // Tiny brass tick
+      ctx.strokeStyle = 'rgba(200, 153, 104, 0.6)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(sx + body.radius + 2, sy);
+      ctx.lineTo(sx + labelOffset, sy);
+      ctx.stroke();
+      ctx.fillText(body.name.toUpperCase(), sx + labelOffset + 4, sy);
+    }
+  }
+}
+
+function render() {
+  drawBackground();
+  drawGrid();
+  drawTrails();
+  drawBodies();
+  updateHUD();
+}
+
+// =====================================================================
+//   HUD UPDATES
+// =====================================================================
+function formatTime(seconds) {
+  const day = 86400, year = 365.25 * day, hour = 3600;
+  if (seconds >= year) return [(seconds / year).toFixed(2), 'y'];
+  if (seconds >= day)  return [(seconds / day).toFixed(1),  'd'];
+  if (seconds >= hour) return [(seconds / hour).toFixed(1), 'h'];
+  return [Math.round(seconds), 's'];
+}
+
+function formatScale() {
+  // m/px -> km/px or AU/px
+  const mPerPx = 1 / state.scale;
+  const AU = 1.495978707e11;
+  if (mPerPx > AU * 0.01) {
+    return [(mPerPx / AU).toFixed(3), 'au/px'];
+  }
+  return [(mPerPx / 1000).toExponential(1), 'km/px'];
+}
+
+function updateHUD() {
+  const elapsed = state.frame * DATA.sample_dt;
+  const [t, tu] = formatTime(elapsed);
+  document.getElementById('hud-time').innerHTML = `${t}<span class="unit">${tu}</span>`;
+  const [s, su] = formatScale();
+  document.getElementById('hud-scale').innerHTML = `${s}<span class="unit">${su}</span>`;
+  document.getElementById('hud-frame').innerHTML =
+    `${state.frame}<span class="unit">/${state.totalFrames - 1}</span>`;
+}
+
+// =====================================================================
+//   ANIMATION LOOP
+// =====================================================================
+let lastTime = 0;
+let frameAccumulator = 0;
+function tick(now) {
+  if (!lastTime) lastTime = now;
+  const dt = (now - lastTime) / 1000; // seconds
+  lastTime = now;
+
+  if (state.playing) {
+    // Advance ~60 frames per second of real time, scaled by speed
+    frameAccumulator += dt * 60 * state.speed;
+    while (frameAccumulator >= 1) {
+      state.frame++;
+      frameAccumulator--;
+      if (state.frame >= state.totalFrames) {
+        state.frame = 0; // loop
+      }
+    }
+  }
+  render();
+  requestAnimationFrame(tick);
+}
+
+// =====================================================================
+//   LEGEND
+// =====================================================================
+function buildLegend() {
+  const ul = document.getElementById('legend');
+  ul.innerHTML = '';
+  for (const body of DATA.bodies) {
+    const li = document.createElement('li');
+    const massStr = body.mass.toExponential(2).replace('e+', 'e').replace('e-', 'e-');
+    li.innerHTML = `
+      <span class="legend-dot" style="background:${body.color};color:${body.color};"></span>
+      <span class="legend-name">${body.name}</span>
+      <span class="legend-mass">${massStr} kg</span>
+    `;
+    ul.appendChild(li);
+  }
+  // Position legend below title panel after layout settles
+  requestAnimationFrame(() => {
+    const titleRect = document.getElementById('panel-title').getBoundingClientRect();
+    const legend = document.getElementById('panel-legend');
+    legend.style.top = (titleRect.bottom + 12) + 'px';
+  });
+}
+
+// =====================================================================
+//   INTERACTION
+// =====================================================================
+canvas.addEventListener('mousedown', e => {
+  state.dragging = true;
+  state.dragX = e.clientX;
+  state.dragY = e.clientY;
+  canvas.classList.add('dragging');
+});
+window.addEventListener('mouseup', () => {
+  state.dragging = false;
+  canvas.classList.remove('dragging');
+});
+window.addEventListener('mousemove', e => {
+  if (!state.dragging) return;
+  state.offsetX += e.clientX - state.dragX;
+  state.offsetY += e.clientY - state.dragY;
+  state.dragX = e.clientX;
+  state.dragY = e.clientY;
+});
+
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
+  // Zoom around mouse position
+  const mx = e.clientX, my = e.clientY;
+  const wx = (mx - state.offsetX) / state.scale;
+  const wy = -(my - state.offsetY) / state.scale;
+  state.scale *= factor;
+  state.offsetX = mx - wx * state.scale;
+  state.offsetY = my + wy * state.scale;
+}, { passive: false });
+
+// Touch support
+let lastTouchDist = null;
+canvas.addEventListener('touchstart', e => {
+  if (e.touches.length === 1) {
+    state.dragging = true;
+    state.dragX = e.touches[0].clientX;
+    state.dragY = e.touches[0].clientY;
+  } else if (e.touches.length === 2) {
+    const dx = e.touches[0].clientX - e.touches[1].clientX;
+    const dy = e.touches[0].clientY - e.touches[1].clientY;
+    lastTouchDist = Math.hypot(dx, dy);
+  }
+}, { passive: true });
+canvas.addEventListener('touchmove', e => {
+  if (e.touches.length === 1 && state.dragging) {
+    state.offsetX += e.touches[0].clientX - state.dragX;
+    state.offsetY += e.touches[0].clientY - state.dragY;
+    state.dragX = e.touches[0].clientX;
+    state.dragY = e.touches[0].clientY;
+  } else if (e.touches.length === 2) {
+    const dx = e.touches[0].clientX - e.touches[1].clientX;
+    const dy = e.touches[0].clientY - e.touches[1].clientY;
+    const dist = Math.hypot(dx, dy);
+    if (lastTouchDist) {
+      const factor = dist / lastTouchDist;
+      const mx = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+      const my = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+      const wx = (mx - state.offsetX) / state.scale;
+      const wy = -(my - state.offsetY) / state.scale;
+      state.scale *= factor;
+      state.offsetX = mx - wx * state.scale;
+      state.offsetY = my + wy * state.scale;
+    }
+    lastTouchDist = dist;
+  }
+  e.preventDefault();
+}, { passive: false });
+canvas.addEventListener('touchend', () => {
+  state.dragging = false;
+  lastTouchDist = null;
+});
+
+// Buttons
+document.getElementById('btn-play').addEventListener('click', e => {
+  state.playing = !state.playing;
+  e.currentTarget.textContent = state.playing ? 'Pause' : 'Play';
+  e.currentTarget.classList.toggle('active', state.playing);
+});
+document.getElementById('btn-reset').addEventListener('click', () => {
+  state.frame = 0;
+});
+document.getElementById('btn-fit').addEventListener('click', () => {
+  fitView();
+});
+document.getElementById('btn-trails').addEventListener('click', e => {
+  state.showTrails = !state.showTrails;
+  e.currentTarget.classList.toggle('active', state.showTrails);
+});
+document.getElementById('btn-grid').addEventListener('click', e => {
+  state.showGrid = !state.showGrid;
+  e.currentTarget.classList.toggle('active', state.showGrid);
+});
+document.getElementById('btn-labels').addEventListener('click', e => {
+  state.showLabels = !state.showLabels;
+  e.currentTarget.classList.toggle('active', state.showLabels);
+});
+document.querySelectorAll('.speed-btn').forEach(btn => {
+  btn.addEventListener('click', e => {
+    document.querySelectorAll('.speed-btn').forEach(b => b.classList.remove('active'));
+    e.currentTarget.classList.add('active');
+    state.speed = parseFloat(e.currentTarget.dataset.speed);
+  });
+});
+
+// Keyboard
+window.addEventListener('keydown', e => {
+  if (e.code === 'Space') {
+    document.getElementById('btn-play').click();
+    e.preventDefault();
+  } else if (e.key === 'r' || e.key === 'R') {
+    state.frame = 0;
+  } else if (e.key === 'f' || e.key === 'F') {
+    fitView();
+  }
+});
+
+window.addEventListener('resize', () => {
+  resize();
+});
+
+// =====================================================================
+//   APPLY OPTIONS FROM PAYLOAD
+// =====================================================================
+if (DATA.options) {
+  if (DATA.options.show_trails === false) {
+    state.showTrails = false;
+    document.getElementById('btn-trails').classList.remove('active');
+  }
+  if (DATA.options.show_grid === false) {
+    state.showGrid = false;
+    document.getElementById('btn-grid').classList.remove('active');
+  }
+}
+
+// =====================================================================
+//   BOOT
+// =====================================================================
+resize();
+computeBounds();
+fitView();
+buildLegend();
+requestAnimationFrame(tick);
+</script>
+</body>
+</html>
